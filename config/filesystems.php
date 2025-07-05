@@ -39,7 +39,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            'url' => env('APP_URL') . '/storage',
             'visibility' => 'public',
             'throw' => false,
         ],
@@ -54,6 +54,13 @@ return [
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
+        ],
+        'pdf_remote' => [
+            'driver'     => 'local',
+            // ahora lee de .env o usa storage_path por defecto
+            'root'       => env('PDF_REMOTE_ROOT', storage_path('app/pdfs')),
+            'url'        => env('APP_URL') . '/storage/pdfs',
+            'visibility' => 'public',
         ],
 
     ],
