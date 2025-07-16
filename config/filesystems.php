@@ -56,12 +56,13 @@ return [
             'throw' => false,
         ],
         'pdf_remote' => [
-            'driver'     => 'local',
-            // ahora lee de .env o usa storage_path por defecto
-            'root'       => env('PDF_REMOTE_ROOT', storage_path('app/pdfs')),
-            'url'        => env('APP_URL') . '/storage/pdfs',
-            'visibility' => 'public',
-        ],
+  'driver'     => 'local',
+  'root'       => env('PDF_REMOTE_ROOT'),
+  'url'        => env('APP_URL') . '/storage/pdfs',
+  'visibility' => 'public',
+],
+
+
 
     ],
 
@@ -77,7 +78,10 @@ return [
     */
 
     'links' => [
-        public_path('storage') => storage_path('app/public'),
+  // ya existente
+  public_path('storage') => storage_path('app/public'),
+  // añade esta línea
+  public_path('storage/pdfs') => env('PDF_REMOTE_ROOT'),
     ],
 
 ];
