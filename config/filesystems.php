@@ -55,12 +55,14 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
         ],
-        'pdf_remote' => [
-  'driver'     => 'local',
-  'root'       => env('PDF_REMOTE_ROOT'),
-  'url'        => env('APP_URL') . '/storage/pdfs',
-  'visibility' => 'public',
-],
+
+    'pdf_remote' => [
+        'driver'     => 'local',
+        'root'       => env('PDF_REMOTE_ROOT', storage_path('app/pdfs')),
+        'url'        => env('APP_URL') . '/pdfs',
+        'visibility' => 'public',
+    ],
+
 
 
 
@@ -77,11 +79,10 @@ return [
     |
     */
 
-    'links' => [
-  // ya existente
-  public_path('storage') => storage_path('app/public'),
-  // añade esta línea
-  public_path('storage/pdfs') => env('PDF_REMOTE_ROOT'),
-    ],
+'links' => [
+    public_path('storage') => storage_path('app/public'),
+    // symlink directo del public/pdfs -> PDF_REMOTE_ROOT
+    public_path('pdfs')    => env('PDF_REMOTE_ROOT', storage_path('app/pdfs')),
+],
 
 ];

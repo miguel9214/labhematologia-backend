@@ -14,9 +14,9 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
-
-        $schedule->command('pdfs:import')->dailyAt('02:00');
+    $schedule->command('pdfs:import --year=2025 --since=3')
+        ->everyMinute()
+        ->withoutOverlapping();
     }
 
     /**
