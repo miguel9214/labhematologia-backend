@@ -14,32 +14,62 @@ class PdfController extends Controller
      */
     public function index(Request $request)
     {
-        $year   = $request->query('year');
-        $month  = $request->query('month');
-        $day    = $request->query('day');
-        $search = $request->query('search');
-        $page   = $request->query('page', 1);
-        $limit  = $request->query('limit', 20);
+        // 1) Validación de inputs
+        $data = $request->validate([
+            'year'   => ['nullable', 'integer', 'between:1900,2100'],
+            'month'  => ['nullable', 'integer', 'between:1,12'],
+            'day'    => ['nullable', 'integer', 'between:1,31'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'page'   => ['nullable', 'integer', 'min:1'],
+            'limit'  => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
 
-        $cacheKey = "pdfs:{$year}:{$month}:{$day}:{$search}:page{$page}";
+        $year   = $data['year']   ?? null;
+        $month  = $data['month']  ?? null;
+        $day    = $data['day']    ?? null;
+        $search = $data['search'] ?? null;
+        $page   = $data['page']   ?? 1;
+        $limit  = $data['limit']  ?? 20;
 
-        $paginator = Cache::remember($cacheKey, 300, function () use ($year, $month, $day, $search, $limit) {
-            $q = PdfDocument::query();
+        // 2) Cache key completo (incluye limit y page)
+        $cacheKey = sprintf(
+            'pdfs:y:%s:m:%s:d:%s:q:%s:page:%d:limit:%d',
+            $year ?? 'any',
+            $month ?? 'any',
+            $day ?? 'any',
+            $search ? sha1($search) : 'none',
+            $page,
+            $limit
+        );
 
-            if ($year)  $q->where('year', $year);
-            if ($month) $q->where('month', $month);
-            if ($day)   $q->where('day', $day);
-            if ($search) {
-                $q->where('name', 'like', "%{$search}%");
-            }
+        // 3) Cache con 5 min
+        $paginator = Cache::remember($cacheKey, 300, function () use ($year, $month, $day, $search, $limit, $page) {
+            $q = PdfDocument::query()
+                ->when($year,  fn($qq) => $qq->where('year',  $year))
+                ->when($month, fn($qq) => $qq->where('month', $month))
+                ->when($day,   fn($qq) => $qq->where('day',   $day))
+                ->when($search, function ($qq) use ($search) {
+                    $qq->where('name', 'like', '%' . str_replace('%', '\%', $search) . '%');
+                });
 
-            return $q->orderByDesc('year')
-                     ->orderByDesc('month')
-                     ->orderByDesc('day')
-                     ->paginate($limit);
+            $paginator = $q->orderByDesc('year')
+                           ->orderByDesc('month')
+                           ->orderByDesc('day')
+                           ->paginate($limit, ['*'], 'page', $page);
+
+            // Conserva filtros en los links de paginación
+            $paginator->appends([
+                'year'   => $year,
+                'month'  => $month,
+                'day'    => $day,
+                'search' => $search,
+                'limit'  => $limit,
+            ]);
+
+            return $paginator;
         });
 
-        // Envuelve cada item con PdfResource para homogeneizar la respuesta
+        // 4) Respuesta consistente con Resource (incluye meta/links del paginator)
         return PdfResource::collection($paginator);
     }
 }

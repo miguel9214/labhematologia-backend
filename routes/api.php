@@ -3,7 +3,8 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PdfController;
-
+use App\Http\Controllers\PdfProxyController;
+use App\Http\Controllers\PdfAdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,6 +17,10 @@ use App\Http\Controllers\PdfController;
 |
 */
 
+Route::prefix('pdf')->name('pdf.')->group(function () {
+    Route::get('list', [\App\Http\Controllers\PdfController::class, 'index'])->name('list')->middleware('throttle:60,1');
+    Route::get('view', [\App\Http\Controllers\PdfProxyController::class, 'show'])->name('view')->middleware('throttle:60,1');
 
-
-Route::get('/pdfs', [PdfController::class, 'index']);
+    Route::get('last-sync', [PdfAdminController::class, 'lastSync'])->name('lastSync')->middleware('throttle:30,1');
+    Route::post('import', [PdfAdminController::class, 'import'])->name('import')->middleware('throttle:pdf-import');
+});
