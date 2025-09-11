@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class PdfAdminController extends Controller
@@ -35,6 +37,7 @@ class PdfAdminController extends Controller
 public function import(Request $request)
 {
     $ttlSeconds = 120;   // el candado dura 2 min
+    $ttlSeconds = 60;    // el candado dura 1 min, para alinearse con el throttle
     $waitMax    = 5;     // espera hasta 5s para adquirir el lock
 
     $lock = Cache::lock('pdfs:import', $ttlSeconds);
@@ -66,6 +69,13 @@ public function import(Request $request)
                 'last_sync' => Cache::get('pdfs:last_sync'),
             ], 429)
             ->header('Retry-After', $retry);
+    } catch (\Exception $e) {
+        Log::error('[pdfs:import] Error inesperado durante la importación.', ['exception' => $e]);
+        return response()->json([
+            'ok' => false,
+            'message' => 'Ocurrió un error inesperado durante la importación.',
+            'last_sync' => Cache::get('pdfs:last_sync'),
+        ], 500);
     } finally {
         // Libera candado si lo tienes
         optional($lock)->release();
