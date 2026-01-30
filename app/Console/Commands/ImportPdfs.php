@@ -54,16 +54,37 @@ public function handle()
         'noviembre'=>11,'diciembre'=>12,
     ];
 
+    // Acceso directo por ruta YYYY/MM/DD cuando hay --today o --since (evita escanear todo el árbol en red)
     $useNativeFiles = false;
-    try {
-        $files = $disk->allFiles();
-    } catch (\Throwable $e) {
-        // Flysystem puede fallar con rutas UNC en Windows (Path cannot be empty) → usar PHP nativo
-        $this->warn('Disco Flysystem falló (' . $e->getMessage() . '), intentando listar con PHP nativo.');
-        // Con --since/--today solo entramos en carpetas cuya ruta indica fecha en la ventana (ideal para red)
-        $files = $this->allFilesNative($root, $cutoff, $windowDays);
+    $files = [];
+    $useTargetedScan = $cutoff !== null && ($todayOnly || ($sinceMin !== null && $sinceMin <= 7 * 24 * 60)); // hoy o últimos 7 días
+    if ($useTargetedScan && $root) {
+        $start = $todayOnly ? Carbon::today() : Carbon::now()->subMinutes($sinceMin)->startOfDay();
+        $end = Carbon::now();
+        $datesForTargeted = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $datesForTargeted[] = $d->copy();
+        }
+        $files = $this->scanTargetedDates($root, $datesForTargeted);
         $useNativeFiles = true;
+        if (count($files) > 0) {
+            $this->info('Modo acceso directo (carpetas YYYY/MM/DD): ' . count($files) . ' archivos.');
+        }
     }
+
+    if (count($files) === 0) {
+        if ($useTargetedScan) {
+            $this->warn('No se encontraron carpetas YYYY/MM/DD en las fechas indicadas; escaneando árbol completo.');
+        }
+        try {
+            $files = $disk->allFiles();
+        } catch (\Throwable $e) {
+            $this->warn('Disco Flysystem falló (' . $e->getMessage() . '), intentando listar con PHP nativo.');
+            $files = $this->allFilesNative($root, $cutoff, $windowDays);
+            $useNativeFiles = true;
+        }
+    }
+
     $totalFiles = count($files);
     $this->info('Total de archivos encontrados: ' . $totalFiles);
 
@@ -191,6 +212,106 @@ public function handle()
     return self::SUCCESS;
 }
 
+    /**
+     * Meses en español para la estructura: HEMATOLOGIA AÑO / MES AÑO / DÍA MES
+     */
+    private const MONTHS_ES = [
+        1 => 'ENERO', 2 => 'FEBRERO', 3 => 'MARZO', 4 => 'ABRIL', 5 => 'MAYO', 6 => 'JUNIO',
+        7 => 'JULIO', 8 => 'AGOSTO', 9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE',
+    ];
+
+    /**
+     * Acceso directo a carpetas por fecha. Prioridad: estructura en español, fallback numérico.
+     * Estructura real: ROOT / HEMATOLOGIA AÑO / MES AÑO / DÍA MES (ej: .../HEMATOLOGIA 2026/ENERO 2026/30 ENERO).
+     *
+     * @param string $root Ruta raíz del disco (ej: //labhematologia/LABHEMATOLOGIA)
+     * @param array<int, \Carbon\Carbon> $dates Fechas a consultar (ej: hoy, ayer)
+     * @return array<int, string> Rutas relativas de archivos
+     */
+    protected function scanTargetedDates(string $root, array $dates): array
+    {
+        $root = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $root), DIRECTORY_SEPARATOR);
+        if ($root === '' || !is_dir($root)) {
+            return [];
+        }
+        $allFiles = [];
+        $months = self::MONTHS_ES;
+
+        foreach ($dates as $date) {
+            $year = $date->year;
+            $month = (int) $date->format('n');
+            $day = (int) $date->format('j');
+            $monthName = $months[$month] ?? null;
+            if ($monthName === null) {
+                continue;
+            }
+
+            // 1) Prioridad: estructura en español "HEMATOLOGIA 2026 / ENERO 2026 / 30 ENERO"
+            $candidatesEs = [];
+            $candidatesEs[] = "HEMATOLOGIA {$year}" . DIRECTORY_SEPARATOR . "{$monthName} {$year}" . DIRECTORY_SEPARATOR . "{$day} {$monthName}"; // 30 ENERO
+            if ($day < 10) {
+                $candidatesEs[] = "HEMATOLOGIA {$year}" . DIRECTORY_SEPARATOR . "{$monthName} {$year}" . DIRECTORY_SEPARATOR . sprintf('%02d', $day) . " {$monthName}"; // 05 ENERO
+            }
+
+            $addedForThisDate = false;
+            foreach ($candidatesEs as $relDirEs) {
+                $fullPathEs = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relDirEs);
+                if (!is_dir($fullPathEs)) {
+                    continue;
+                }
+                $relDirSlash = str_replace(DIRECTORY_SEPARATOR, '/', $relDirEs);
+                $list = @scandir($fullPathEs);
+                if ($list === false) {
+                    continue;
+                }
+                foreach ($list as $entry) {
+                    if ($entry === '.' || $entry === '..') {
+                        continue;
+                    }
+                    $fullFile = $fullPathEs . DIRECTORY_SEPARATOR . $entry;
+                    if (!is_file($fullFile)) {
+                        continue;
+                    }
+                    $allFiles[] = $relDirSlash . '/' . $entry;
+                }
+                $addedForThisDate = true;
+                break; // carpeta encontrada, no probar más variantes de día
+            }
+
+            if ($addedForThisDate) {
+                continue; // ya añadimos archivos de esta fecha con estructura español
+            }
+
+            // 2) Fallback: ruta numérica estándar 2026/01/30 (y 2026/1/30)
+            $y = $date->format('Y');
+            $relSegmentsWithZero = [$y, $date->format('m'), $date->format('d')];
+            $relSegmentsNoZero = [$y, (string) (int) $date->format('m'), (string) (int) $date->format('d')];
+            foreach ([$relSegmentsWithZero, $relSegmentsNoZero] as $segments) {
+                $relDir = implode('/', $segments);
+                $fullPath = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relDir);
+                if (!is_dir($fullPath)) {
+                    continue;
+                }
+                $list = @scandir($fullPath);
+                if ($list === false) {
+                    continue;
+                }
+                foreach ($list as $entry) {
+                    if ($entry === '.' || $entry === '..') {
+                        continue;
+                    }
+                    $fullFile = $fullPath . DIRECTORY_SEPARATOR . $entry;
+                    if (!is_file($fullFile)) {
+                        continue;
+                    }
+                    $allFiles[] = $relDir . '/' . $entry;
+                }
+                break;
+            }
+        }
+
+        return $allFiles;
+    }
 
     /**
      * Intenta extraer [year, month, day] de una lista de directorios.

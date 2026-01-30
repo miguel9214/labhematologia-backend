@@ -40,20 +40,19 @@ public function import(Request $request)
     $ttlSeconds = 60;   // el candado dura 1 min, para alinearse con el throttle
     $waitMax    = 5;    // espera hasta 5s para adquirir el lock
 
-    $scope = $request->input('scope', 'week');
+    $scope = $request->input('scope', 'today');
     $scopes = [
+        'today' => ['label' => 'solo hoy (acceso directo)', 'today' => true],
         'day'   => ['minutes' => 24 * 60,           'label' => 'último día',   'since' => true],
         'week'  => ['minutes' => 7 * 24 * 60,       'label' => 'última semana', 'since' => true],
         'month' => ['minutes' => 30 * 24 * 60,      'label' => 'último mes',   'since' => true],
         'all'   => ['minutes' => null,              'label' => 'índice completo (todos los PDFs)', 'since' => false],
     ];
     if (!isset($scopes[$scope])) {
-        $scope = 'week';
+        $scope = 'today';
     }
     $config = $scopes[$scope];
-    $minutes = $config['minutes'];
-    $label   = $config['label'];
-    $useSince = $config['since'];
+    $label  = $config['label'];
 
     $lock = Cache::lock('pdfs:import', $ttlSeconds);
 
@@ -61,22 +60,32 @@ public function import(Request $request)
         $lock->block($waitMax);
 
         Log::info('[pdfs:import] inicio', ['scope' => $scope]);
-        $params = $useSince ? ['--since' => $minutes] : [];
-        Artisan::call('pdfs:import', $params);
 
+        if (!empty($config['today'])) {
+            Artisan::call('pdfs:import', ['--today' => true]);
+        } elseif (!empty($config['since'])) {
+            Artisan::call('pdfs:import', ['--since' => $config['minutes']]);
+        } else {
+            Artisan::call('pdfs:import', []);
+        }
+
+        $output = trim(Artisan::output());
         $now = now()->format('Y-m-d H:i:s');
         Cache::put('pdfs:last_sync', $now, 60 * 60 * 24 * 30);
         Cache::increment('pdfs:list:version');
 
         Log::info('[pdfs:import] fin OK', ['last_sync' => $now]);
 
-        $message = $useSince
-            ? 'Importación completada (archivos de la ' . $label . ').'
-            : 'Importación completa. Se han indexado todos los PDFs del disco.';
+        $message = !empty($config['today'])
+            ? 'Importación completada (solo hoy, acceso directo).'
+            : (!empty($config['since'])
+                ? 'Importación completada (archivos de la ' . $label . ').'
+                : 'Importación completa. Se han indexado todos los PDFs del disco.');
         return response()->json([
             'ok'        => true,
             'message'   => $message,
             'last_sync' => $now,
+            'output'    => $output ?: null,
         ]);
     } catch (LockTimeoutException $e) {
         // No pudo adquirir el lock en 5s → devuelve 429 con Retry-After
