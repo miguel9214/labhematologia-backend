@@ -19,8 +19,9 @@ use App\Http\Controllers\PdfAdminController;
 
 Route::prefix('pdf')->name('pdf.')->group(function () {
     Route::get('list', [\App\Http\Controllers\PdfController::class, 'index'])->name('list')->middleware('throttle:60,1');
-    Route::get('view', [\App\Http\Controllers\PdfProxyController::class, 'show'])->name('view')->middleware('throttle:60,1');
+    Route::get('view', [\App\Http\Controllers\PdfProxyController::class, 'show'])->name('view')->middleware(['signed', 'throttle:60,1']);
 
     Route::get('last-sync', [PdfAdminController::class, 'lastSync'])->name('lastSync')->middleware('throttle:30,1');
     Route::post('import', [PdfAdminController::class, 'import'])->name('import')->middleware('throttle:pdf-import');
+    Route::post('upload', [\App\Http\Controllers\PdfUploadController::class, '__invoke'])->name('upload')->middleware('throttle:pdf-upload');
 });

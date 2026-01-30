@@ -15,10 +15,15 @@ class PdfProxyController extends Controller
 
         $relative = trim(str_replace(['..', '\\'], ['','/'], $relative), '/');
 
-        $disk = Storage::disk('pdf_remote');
-        if (!$disk->exists($relative)) abort(404);
+        // Buscar en subidas directas primero, luego en carpeta compartida
+        $disk = Storage::disk('pdf_uploads')->exists($relative)
+            ? Storage::disk('pdf_uploads')
+            : Storage::disk('pdf_remote');
+        if (!$disk->exists($relative)) {
+            abort(404);
+        }
 
-        $absolute = $disk->path($relative); // driver local
+        $absolute = $disk->path($relative);
         return new BinaryFileResponse($absolute, 200, [
             'Content-Type'        => 'application/pdf',
             'Content-Disposition' => 'inline; filename="'.basename($relative).'"',

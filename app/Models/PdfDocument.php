@@ -8,7 +8,11 @@ use Illuminate\Support\Facades\URL;
 
 class PdfDocument extends Model
 {
-    protected $fillable = ['name', 'path', 'year', 'month', 'day'];
+    protected $fillable = ['name', 'path', 'year', 'month', 'day', 'source'];
+
+    /** 'remote' = carpeta compartida, 'local' = subido por la app */
+    public const SOURCE_REMOTE = 'remote';
+    public const SOURCE_LOCAL = 'local';
 
     // Agregamos accesores útiles:
     protected $appends  = ['url_public', 'url_proxy', 'basename'];
@@ -30,12 +34,15 @@ class PdfDocument extends Model
     }
 
     /**
-     * URL pública vía symlink /pdfs (usa el disk 'pdf_remote')
-     * Requiere APP_URL correcto (p. ej. http://192.168.2.93:8001)
+     * URL pública: local usa pdf_uploads, remoto usa pdf_remote
      */
     public function getUrlPublicAttribute(): ?string
     {
-        return $this->path ? Storage::disk('pdf_remote')->url($this->path) : null;
+        if (!$this->path) return null;
+        $disk = ($this->attributes['source'] ?? 'remote') === self::SOURCE_LOCAL
+            ? 'pdf_uploads'
+            : 'pdf_remote';
+        return Storage::disk($disk)->url($this->path);
     }
 
     /**

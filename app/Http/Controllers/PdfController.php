@@ -31,9 +31,11 @@ class PdfController extends Controller
         $page   = $data['page']   ?? 1;
         $limit  = $data['limit']  ?? 20;
 
-        // 2) Cache key completo (incluye limit y page)
+        // 2) Cache key (incluye versión: se invalida al subir o al importar)
+        $version = Cache::get('pdfs:list:version', 1);
         $cacheKey = sprintf(
-            'pdfs:y:%s:m:%s:d:%s:q:%s:page:%d:limit:%d',
+            'pdfs:v:%s:y:%s:m:%s:d:%s:q:%s:page:%d:limit:%d',
+            $version,
             $year ?? 'any',
             $month ?? 'any',
             $day ?? 'any',

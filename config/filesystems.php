@@ -63,8 +63,14 @@ return [
         'visibility' => 'public',
     ],
 
-
-
+    // Prioridad 2: Subidas locales (fallback cuando la red no está disponible)
+'pdf_uploads' => [
+            'driver'     => 'local',
+            // OJO: Usa barras normales (/) en lugar deF invertidas (\)
+            'root'       => 'C:/Users/MIGUEL/Documents/EXAMENES',
+            'visibility' => 'private',
+            'throw'      => false,
+        ],
 
     ],
 

@@ -13,15 +13,17 @@ class PdfResource extends JsonResource
         // preferimos usar 'path' si existe
         $relative = $this->path ?? trim("{$this->year}/{$this->month}/{$this->day}/{$this->name}", '/');
 
-        return [
-            'id'    => $this->id ?? null,
-            'name'  => $this->name,
-            'year'  => $this->year,
-            'month' => $this->month,
-            'day'   => $this->day,
+        $disk = ($this->source ?? 'remote') === 'local' ? 'pdf_uploads' : 'pdf_remote';
 
-            // URL pública (vía symlink public/pdfs -> PDF_REMOTE_ROOT)
-            'url_public' => Storage::disk('pdf_remote')->url($relative),
+        return [
+            'id'     => $this->id ?? null,
+            'name'   => $this->name,
+            'year'   => $this->year,
+            'month'  => $this->month,
+            'day'    => $this->day,
+            'source' => $this->source ?? 'remote',
+
+            'url_public' => Storage::disk($disk)->url($relative),
 
             // URL proxy firmada por 30 minutos (requiere ruta con ->name('pdf.view')->middleware('signed'))
             'url_proxy'  => URL::temporarySignedRoute(
